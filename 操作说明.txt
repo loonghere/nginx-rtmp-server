@@ -1,0 +1,334 @@
+首先安装Centos系统
+
+安装包都放在/usr/local/src下面
+
+安装Nginx
+
+1、安装pcre
+
+cd /usr/local/src
+
+mkdir /usr/local/pcre
+
+tar zxvf pcre-8.39.tar.gz
+
+cd pcre-8.39
+
+./configure --prefix=/usr/local/pcre
+
+make
+
+make install
+
+2、安装openssl
+
+cd /usr/local/src
+
+mkdir /usr/local/openssl
+
+tar zxvf openssl-1.0.2h.tar.gz
+
+cd openssl-1.0.2h
+
+./config --prefix=/usr/local/openssl
+
+make
+
+make install
+
+vi /etc/profile
+
+export PATH=$PATH:/usr/local/openssl/bin
+
+:wq!
+
+source /etc/profile
+
+3、安装zlib
+
+cd /usr/local/src
+
+mkdir /usr/local/zlib
+
+tar zxvf zlib-1.2.8.tar.gz
+
+cd zlib-1.2.8
+
+./configure --prefix=/usr/local/zlib
+
+make
+
+make install
+
+4、解压nginx-rtmp-module
+
+cd /usr/local/src
+
+tar zxvf nginx-rtmp-module-1.1.8.tar.gz
+
+5、安装Nginx
+
+groupadd www
+
+useradd -g www www -s /bin/false
+
+cd /usr/local/src
+
+tar zxvf nginx-1.11.2.tar.gz
+
+cd nginx-1.11.2
+
+./configure --prefix=/usr/local/nginx --without-http_memcached_module --user=www --group=www --with-http_stub_status_module --with-http_ssl_module --with-http_gzip_static_module --with-openssl=/usr/local/src/openssl-1.0.2h --with-zlib=/usr/local/src/zlib-1.2.8 --with-pcre=/usr/local/src/pcre-8.39 --add-module=../nginx-rtmp-module-1.1.8
+
+注意：--with-openssl=/usr/local/src/openssl-1.0.2h --with-zlib=/usr/local/src/zlib-1.2.8 --with-pcre=/usr/local/src/pcre-8.39指向的是源码包解压的路径，而不是安装的路径，否则会报错
+
+make
+
+make install
+
+设置nginx开机启动
+
+vi /etc/rc.d/init.d/nginx #编辑启动文件添加下面内容
+
+############################################################
+
+#!/bin/sh
+
+#
+
+# nginx - this script starts and stops the nginx daemon
+
+#
+
+# chkconfig: - 85 15
+
+# description: Nginx is an HTTP(S) server, HTTP(S) reverse \
+
+# proxy and IMAP/POP3 proxy server
+
+# processname: nginx
+
+# config: /etc/nginx/nginx.conf
+
+# config: /usr/local/nginx/conf/nginx.conf
+
+# pidfile: /usr/local/nginx/logs/nginx.pid
+
+# Source function library.
+
+. /etc/rc.d/init.d/functions
+
+# Source networking configuration.
+
+. /etc/sysconfig/network
+
+# Check that networking is up.
+
+[ "$NETWORKING" = "no" ] && exit 0
+
+nginx="/usr/local/nginx/sbin/nginx"
+
+prog=$(basename $nginx)
+
+NGINX_CONF_FILE="/usr/local/nginx/conf/nginx.conf"
+
+[ -f /etc/sysconfig/nginx ] && . /etc/sysconfig/nginx
+
+lockfile=/var/lock/subsys/nginx
+
+make_dirs() {
+
+# make required directories
+
+user=`$nginx -V 2>&1 | grep "configure arguments:" | sed 's/[^*]*--user=\([^ ]*\).*/\1/g' -`
+
+if [ -z "`grep $user /etc/passwd`" ]; then
+
+useradd -M -s /bin/nologin $user
+
+fi
+
+options=`$nginx -V 2>&1 | grep 'configure arguments:'`
+
+for opt in $options; do
+
+if [ `echo $opt | grep '.*-temp-path'` ]; then
+
+value=`echo $opt | cut -d "=" -f 2`
+
+if [ ! -d "$value" ]; then
+
+# echo "creating" $value
+
+mkdir -p $value && chown -R $user $value
+
+fi
+
+fi
+
+done
+
+}
+
+start() {
+
+[ -x $nginx ] || exit 5
+
+[ -f $NGINX_CONF_FILE ] || exit 6
+
+make_dirs
+
+echo -n $"Starting $prog: "
+
+daemon $nginx -c $NGINX_CONF_FILE
+
+retval=$?
+
+echo
+
+[ $retval -eq 0 ] && touch $lockfile
+
+return $retval
+
+}
+
+stop() {
+
+echo -n $"Stopping $prog: "
+
+killproc $prog -QUIT
+
+retval=$?
+
+echo
+
+[ $retval -eq 0 ] && rm -f $lockfile
+
+return $retval
+
+}
+
+restart() {
+
+#configtest || return $?
+
+stop
+
+sleep 1
+
+start
+
+}
+
+reload() {
+
+#configtest || return $?
+
+echo -n $"Reloading $prog: "
+
+killproc $nginx -HUP
+
+RETVAL=$?
+
+echo
+
+}
+
+force_reload() {
+
+restart
+
+}
+
+configtest() {
+
+$nginx -t -c $NGINX_CONF_FILE
+
+}
+
+rh_status() {
+
+status $prog
+
+}
+
+rh_status_q() {
+
+rh_status >/dev/null 2>&1
+
+}
+
+case "$1" in
+
+start)
+
+rh_status_q && exit 0
+
+$1
+
+;;
+
+stop)
+
+rh_status_q || exit 0
+
+$1
+
+;;
+
+restart|configtest)
+
+$1
+
+;;
+
+reload)
+
+rh_status_q || exit 7
+
+$1
+
+;;
+
+force-reload)
+
+force_reload
+
+;;
+
+status)
+
+rh_status
+
+;;
+
+condrestart|try-restart)
+
+rh_status_q || exit 0
+
+;;
+
+*)
+
+echo $"Usage: $0 {start|stop|status|restart|condrestart|try-restart|reload|force-reload|configtest}"
+
+exit 2
+
+esac
+
+############################################################
+
+:wq! #保存退出
+
+chmod 775 /etc/rc.d/init.d/nginx #赋予文件执行权限
+
+chkconfig nginx on #设置开机启动
+
+service nginx restart #重启
+
+在浏览器中打开服务器IP地址，会看到下面的界面，说明Nginx安装成功。
+
+例如推流、拉流地址
+推流：rtmp://192.168.1.189/wanglei/test
+拉流：rtmp://192.168.1.189/wanglei/test
+      http://192.168.1.189/wanglei/test.m3u8
